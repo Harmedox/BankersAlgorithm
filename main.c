@@ -16,8 +16,8 @@ int initResourceVector [NUMBER_OF_RESOURCES];
 
 //available, max, allocation, need
 int available [NUMBER_OF_RESOURCES];
-int allocation [NUMBER_OF_CUSTOMERS][NUMBER_OF_RESOURCES] = {{1,1,0},{1,3,0},{0,0,2},{0,1,1},{0,2,0}};
-int maximum [NUMBER_OF_CUSTOMERS][NUMBER_OF_RESOURCES] = {{5,5,5},{3,3,6},{3,5,3},{7,1,4},{7,2,2}};
+int allocation [NUMBER_OF_CUSTOMERS][NUMBER_OF_RESOURCES] = {{1,0,0},{1,2,1},{0,0,1},{1,1,1},{0,3,0}};
+int maximum [NUMBER_OF_CUSTOMERS][NUMBER_OF_RESOURCES] = {{5,4,5},{3,3,6},{3,5,4},{5,1,4},{6,2,2}};
 int need [NUMBER_OF_CUSTOMERS][NUMBER_OF_RESOURCES];
 
 int requestResource(int processID,int requestVector[]);
@@ -41,7 +41,7 @@ int main(int argc, char const *argv[])
 	}
 	for(i = 0; i < NUMBER_OF_RESOURCES; i++)
 	{
-		initResourceVector[i] = atoi(argv[i+1]);//argv[0] is name of program
+		initResourceVector[i] = atoi(argv[i+1]);
 		available[i] = initResourceVector[i];
 	}
 
@@ -54,22 +54,14 @@ int main(int argc, char const *argv[])
 		}
 	}
 
-	printf("Available resources vector is:\n");
-	printAvailable();
-
-	printf("Initial allocation matrix is:\n");
-	printAllocation();
-
-	printf("Initial need matrix is:\n");
-	printNeed();
-
-	pthread_mutex_init(&mutex,NULL);//declared at head of code
+	pthread_mutex_init(&mutex,NULL);
 	pthread_attr_t attrDefault;
 	pthread_attr_init(&attrDefault);
 	pthread_t *tid = malloc(sizeof(pthread_t) * NUMBER_OF_CUSTOMERS);
 
 	//generate customer number for banker's algorithm, different from pthread identifier
 	int *pid = malloc(sizeof(int) * NUMBER_OF_CUSTOMERS);
+
 	//initialize pid and create threads
 	for(i = 0; i < NUMBER_OF_CUSTOMERS; i++)
 	{
@@ -111,10 +103,9 @@ void *customer(void* customer_num)
 		}
 
 
-		printf("Customer %d is trying to request resources:\n",processID);
-		printReqOrRelVector(requestVector);
-		//requestResource() will still return -1 when it fail and return 0 when succeed in allocate
 		
+		//requestResource() will still return -1 when it fail and return 0 when allocation is successful
+
 		int requestSatisfaction=requestResource(processID,requestVector);
 		
 		//unlock
@@ -122,6 +113,11 @@ void *customer(void* customer_num)
 
 		while(requestSatisfaction<0)
 		{
+
+			//display request rejection message
+			//there are more than one reason for a request to be rejected which is why it is placed here rather than in the requestResource() function
+			printf("Timestamp:[%u]; Customer: %d; request denied\n",(unsigned)time(NULL),processID);
+
 			//if request is denied, then sleep for a random period less than 10 millisecond
 			//then try again with the same request
 
@@ -130,7 +126,10 @@ void *customer(void* customer_num)
 			
 		}
 		
-	
+
+		//display request acceptance message
+		printf("Timestamp:[%u]; Customer: %d; request satisfied\n",(unsigned)time(NULL),processID);
+
 		//since the request is granted, simulate run by sleeping for random time less than 100 millisecond
 		//release random number of resources		
 		sleep(rand() % 100);
@@ -151,10 +150,8 @@ void *customer(void* customer_num)
 				releaseVector[i] = 0;
 			}
 		}
-		printf("Customer %d is trying to release resources:\n",processID);
-		printReqOrRelVector(releaseVector);
-		//releaseResource() will still return -1 when it fail and return 0 when succeed in allocate, like textbook says
-		//altough I put the error message output part in the releaseResource function
+
+		//releaseResource() will still return -1 when it fail and return 0 when successful in allocation
 		releaseResource(processID,releaseVector);
 		//unlock
 		pthread_mutex_unlock(&mutex);
@@ -163,18 +160,28 @@ void *customer(void* customer_num)
 
 int requestResource(int processID,int requestVector[])
 {
-	//whether request number of resources is greater than needed
+	//print request
+	printf("Timestamp:[%u]; Customer: %d; ",(unsigned)time(NULL),processID);
+	for (i = 0; i < NUMBER_OF_RESOURCES; ++i)
+	{
+		printf("%d requested resource type %d",requestVector[i],i+1);
+		if(i<NUMBER_OF_RESOURCES-1)
+			printf(", ");
+		else
+			printf("\n");
+	}
+
+	//check if request number of resources is greater than needed
 	if (ifGreaterThanNeed(processID,requestVector) == -1)
 	{
-		printf("requested resources is bigger than needed.\n");
+		printf("Customer %d requested resources is bigger than needed.\n",processID);
 		return -1;
 	}
-	printf("Requested resources are not more than needed.\nPretend to allocate...\n");
-
-	//whether request number of resources is greater than needed
+	
+	//check if there is enough resources to allocate
 	if(ifEnoughToAlloc(requestVector) == -1)
 	{
-		printf("There is not enough resources for this process.\n");
+		//there isnt enough resources for this process
 		return -1;
 	}
 
@@ -185,29 +192,23 @@ int requestResource(int processID,int requestVector[])
 		allocation[processID][i] += requestVector[i];
 		available[i] -= requestVector[i];
 	}
-	printf("Checking if it is still safe...\n");
+	
 	
 	//check if still in safe status
 	if (ifInSafeMode() == 0)
 	{
-		printf("Safe. Allocated successfully.\nNow available resources vector is:\n");
-		printAvailable();
-		printf("Now allocated matrix is:\n");
-		printAllocation();
-		printf("Now need matrix is:\n");
-		printNeed();
+		
 		return 0;
 	}
 	else
 	{
-		printf("It is not safe. Rolling back.\n");
+		//rollback since it is not safe
 		for (i = 0; i < NUMBER_OF_RESOURCES; ++i)
 		{
 			need[processID][i] += requestVector[i];
 			allocation[processID][i] -= requestVector[i];
 			available[i] += requestVector[i];
 		}
-		printf("Rolled back successfully.\n");
 		return -1;
 	}
 }
@@ -216,7 +217,7 @@ int releaseResource(int processID,int releaseVector[])
 {
 	if(ifEnoughToRelease(processID,releaseVector) == -1)
 	{
-		printf("The process do not own enough resources to release.\n");
+		//the process do not own enough resources to release
 		return -1;
 	}
 
@@ -227,15 +228,13 @@ int releaseResource(int processID,int releaseVector[])
 		need[processID][i] += releaseVector[i];
 		available[i] += releaseVector[i];
 	}
-	printf("Release successfully.\nNow available resources vector is:\n");
-	printAvailable();
-	printf("Now allocated matrix is:\n");
-	printAllocation();
-	printf("Now need matrix is:\n");
-	printNeed();
+	//display successful resource release message
+	printf("Timestamp:[%u]; Customer: %d; resource released\n",(unsigned)time(NULL),processID);
 	return 0;
 }
 
+
+//checks if the process own enough resources to release
 int ifEnoughToRelease(int processID,int releaseVector[])
 {
 	for (i = 0; i < NUMBER_OF_RESOURCES; ++i)
@@ -251,6 +250,8 @@ int ifEnoughToRelease(int processID,int releaseVector[])
 	}
 	return 0;
 }
+
+//check if requested resource is greater than need
 int ifGreaterThanNeed(int processID,int requestVector[])
 {
 	for (i = 0; i < NUMBER_OF_RESOURCES; ++i)
@@ -267,6 +268,8 @@ int ifGreaterThanNeed(int processID,int requestVector[])
 	return 0;
 }
 
+
+//check if available resource is enough to satisfy request
 int ifEnoughToAlloc(int requestVector[])
 {
 	//first element of requestVector is processID
@@ -284,57 +287,14 @@ int ifEnoughToAlloc(int requestVector[])
 	return 0;
 }
 
-void printNeed()
-{
-	for (i = 0; i < NUMBER_OF_CUSTOMERS; ++i)
-	{
-		printf("{ ");
-		for (j = 0; j < NUMBER_OF_RESOURCES; ++j)
-		{
-			printf("%d, ", need[i][j]);
-		}
-		printf("}\n");
-	}
-	return;
-}
-
-void printAllocation()
-{
-	for (i = 0; i < NUMBER_OF_CUSTOMERS; ++i)
-	{
-		printf("{ ");
-		for (j = 0; j < NUMBER_OF_RESOURCES; ++j)
-		{
-			printf("%d, ", allocation[i][j]);
-		}
-		printf("}\n");
-	}
-	return;
-}
-
-void printAvailable()
-{
-	for (i = 0; i < NUMBER_OF_RESOURCES; ++i)
-	{
-		printf("%d, ",available[i]);
-	}
-	printf("\n");
-	return;
-}
-
-void printReqOrRelVector(int vec[])
-{
-	for (i = 0; i < NUMBER_OF_RESOURCES; ++i)
-	{
-		printf("%d, ",vec[i]);
-	}
-	printf("\n");
-	return;
-}
+//checks if current state is a safe state
 int ifInSafeMode()
 {
-	int ifFinish[NUMBER_OF_CUSTOMERS] = {0};//there is no bool type in old C
-	int work[NUMBER_OF_RESOURCES];//temporary available resources vector
+	int ifFinish[NUMBER_OF_CUSTOMERS] = {0};
+
+	//temporary available resources
+	int work[NUMBER_OF_RESOURCES];
+
 	for(i = 0; i < NUMBER_OF_RESOURCES; i++)
 	{
 		work[i] = available[i];
@@ -348,7 +308,7 @@ int ifInSafeMode()
 			{
 				if(need[i][j] <= work[j])
 				{
-					if(j == NUMBER_OF_RESOURCES - 1)//means we checked whole vector, so this process can execute
+					if(j == NUMBER_OF_RESOURCES - 1)//means the whole vector is checked
 					{
 						ifFinish[i] = 1;
 						for (k = 0; k < NUMBER_OF_RESOURCES; ++k)
@@ -356,20 +316,20 @@ int ifInSafeMode()
 							work[k] += allocation[i][k];
 							//execute and release resources
 						}
-						//if we break here, it will not check all process, so we should reset i to let it check from beginning
+						//if we break here, it will not check all processes, so we should reset i to let it check from beginning
 						//If we cannot find any runnable process from beginning to the end in i loop, we can determine that
 						//there is no any runnable process, but we cannot know if we do not reset i.
-						i = -1;//at the end of this loop, i++, so -1++ = 0
-						break;//in loop j, break to loop i and check next runnable process
+						i = -1; //at the end of this loop, i++, so -1++ = 0
+						break; //in loop j, break to loop i and check next runnable process
 					}
-					else//not finished checking all resource, but this kind resources is enough
+					else //not finished checking all resource, but this kind of resources is enough
 					{
 						continue;
 					}
 				}
-				else//resources not enough, break to loop i for next process
+				else //resources not enough, break to loop i for next process
 				{
-					//because there is no change happened, so we do not need to reset i in this condition.
+					//because no change happened, so we do not need to reset i in this condition.
 					break;
 				}
 			}
@@ -379,14 +339,14 @@ int ifInSafeMode()
 			continue;
 		}
 	}
-	//there are two condition if we finish loop i
-	//1. there is no process can run in this condition.
-	//2. all processes are runned, which means it is in safe status.
+	//there are two conditions if we finish loop i
+	//1. there is no process that can run in this condition.
+	//2. all processes are running, which means it is in safe status.
 	for(i = 0; i < NUMBER_OF_CUSTOMERS; i++)
 	{
 		if (ifFinish[i] == 0)
 		{
-			//not all processes are runned, so it is condition 1.
+			//not all processes are running, so it is condition 1.
 			return -1;
 		}
 		else
