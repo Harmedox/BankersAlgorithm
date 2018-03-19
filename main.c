@@ -12,12 +12,12 @@ int j = 0;
 //mutex lock for access to global variable
 pthread_mutex_t mutex;
 
-int initResourceVector [NUMBER_OF_RESOURCES];
+int initResource [NUMBER_OF_RESOURCES];
 
 //available, max, allocation, need
 int available [NUMBER_OF_RESOURCES];
-int allocation [NUMBER_OF_CUSTOMERS][NUMBER_OF_RESOURCES] = {{1,0,0},{1,2,1},{0,0,1},{1,1,1},{0,3,0}};
-int maximum [NUMBER_OF_CUSTOMERS][NUMBER_OF_RESOURCES] = {{5,4,5},{3,3,6},{3,5,4},{5,1,4},{6,2,2}};
+int allocation [NUMBER_OF_CUSTOMERS][NUMBER_OF_RESOURCES];
+int maximum [NUMBER_OF_CUSTOMERS][NUMBER_OF_RESOURCES];
 int need [NUMBER_OF_CUSTOMERS][NUMBER_OF_RESOURCES];
 
 int requestResource(int processID,int requestVector[]);
@@ -26,30 +26,33 @@ int ifGreaterThanNeed(int processID,int requestVector[]);
 int ifEnoughToRelease(int processID,int releaseVector[]);
 int ifInSafeMode();
 int ifEnoughToAlloc();
-void printNeed();
-void printAllocation();
-void printAvailable();
-void printReqOrRelVector(int vec[]);
+
 void *customer(void* customer_num);
 
 int main(int argc, char const *argv[])
 {
 	if(argc != NUMBER_OF_RESOURCES + 1)
 	{
-		printf("Quantity of parameter is not correct.\n");
+		printf("parameter list is not correct.\n");
 		return -1;
 	}
 	for(i = 0; i < NUMBER_OF_RESOURCES; i++)
 	{
-		initResourceVector[i] = atoi(argv[i+1]);
-		available[i] = initResourceVector[i];
+		initResource[i] = atoi(argv[i+1]);
+		available[i] = initResource[i];
+		//printf("%d\n",available[i]);
 	}
 
-	//initialize need
+
+	//initialize maximum, allocation and need
+
 	for (i = 0; i < NUMBER_OF_CUSTOMERS; ++i)
 	{
 		for (j = 0; j < NUMBER_OF_RESOURCES; ++j)
 		{
+			maximum[i][j] = rand() % (available[j] + 1);
+			//initialize allocation to 0
+			allocation[i][j] = 0;
 			need[i][j] = maximum[i][j] - allocation[i][j];
 		}
 	}
@@ -82,27 +85,33 @@ void *customer(void* customer_num)
 
 	while(1)
 	{
+		
 		//request random number of resources
 		sleep(1);
 		int requestVector[NUMBER_OF_RESOURCES];
 
 		//Because i is global variable, we should lock from here
-		//lock mutex for accessing global variable and printf
+		//lock mutex for accessing global variable 
 		pthread_mutex_lock(&mutex);
-		//initialize requestVector
-		for(i = 0; i < NUMBER_OF_RESOURCES; i++)
-		{
-			if(need[processID][i] != 0)
+
+		//initialize request
+		int sumRequest = 0;
+		while(sumRequest <= 0){
+			for(i = 0; i < NUMBER_OF_RESOURCES; i++)
 			{
-				requestVector[i] = rand() % need[processID][i];
+				//requested resource cannot be greater than needed
+				if(need[processID][i] != 0)
+				{
+					requestVector[i] = rand() % (need[processID][i] + 1);
+				}
+				else
+				{
+					requestVector[i] = 0;
+				}
+				sumRequest += requestVector[i];
 			}
-			else
-			{
-				requestVector[i] = 0;
-			}
+
 		}
-
-
 		
 		//requestResource() will still return -1 when it fail and return 0 when allocation is successful
 
@@ -136,7 +145,7 @@ void *customer(void* customer_num)
 
 		int releaseVector[NUMBER_OF_RESOURCES];
 		//Because i is global variable, we should lock from here
-		//lock mutex for accessing global variable and printf
+		//lock mutex for accessing global variable 
 		pthread_mutex_lock(&mutex);
 		//initialize releaseVector
 		for(i = 0; i < NUMBER_OF_RESOURCES; i++)
@@ -155,12 +164,25 @@ void *customer(void* customer_num)
 		releaseResource(processID,releaseVector);
 		//unlock
 		pthread_mutex_unlock(&mutex);
+
+		int sumNeed=0;
+		while(sumNeed<=0){
+			//reset maximum to a random value less than or equal to the initial resource for the customer
+			for (i = 0; i < NUMBER_OF_RESOURCES; ++i)
+			{
+				maximum[processID][i] = rand() % (initResource[i] + 1);
+				//initialize/reset allocation to 0
+				allocation[processID][i] = 0;
+				need[processID][i] = maximum[processID][i] - allocation[processID][i];
+				sumNeed += need[processID][i];
+			}
+		}
 	}
 }
 
 int requestResource(int processID,int requestVector[])
 {
-	//print request
+	//print request message
 	printf("Timestamp:[%u]; Customer: %d; ",(unsigned)time(NULL),processID);
 	for (i = 0; i < NUMBER_OF_RESOURCES; ++i)
 	{
@@ -174,7 +196,7 @@ int requestResource(int processID,int requestVector[])
 	//check if request number of resources is greater than needed
 	if (ifGreaterThanNeed(processID,requestVector) == -1)
 	{
-		printf("Customer %d requested resources is bigger than needed.\n",processID);
+		
 		return -1;
 	}
 	
@@ -182,10 +204,12 @@ int requestResource(int processID,int requestVector[])
 	if(ifEnoughToAlloc(requestVector) == -1)
 	{
 		//there isnt enough resources for this process
+		
 		return -1;
 	}
 
 	//pretend allocated
+	//update allocation with requested resource
 	for (i = 0; i < NUMBER_OF_RESOURCES; ++i)
 	{
 		need[processID][i] -= requestVector[i];
@@ -209,6 +233,7 @@ int requestResource(int processID,int requestVector[])
 			allocation[processID][i] -= requestVector[i];
 			available[i] += requestVector[i];
 		}
+		//printf("modebe");
 		return -1;
 	}
 }
@@ -295,16 +320,17 @@ int ifInSafeMode()
 	//temporary available resources
 	int work[NUMBER_OF_RESOURCES];
 
-	for(i = 0; i < NUMBER_OF_RESOURCES; i++)
+	for(i = 0; i < NUMBER_OF_RESOURCES; ++i)
 	{
 		work[i] = available[i];
+		//printf("%d ",available[i]);
 	}
 	int k;
 	for(i = 0; i < NUMBER_OF_CUSTOMERS; i++)
 	{
 		if (ifFinish[i] == 0)
 		{
-			for(j = 0; j < NUMBER_OF_RESOURCES; j++)
+			for(j = 0; j < NUMBER_OF_RESOURCES; ++j)
 			{
 				if(need[i][j] <= work[j])
 				{
