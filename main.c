@@ -95,23 +95,23 @@ void *customer(void* customer_num)
 		pthread_mutex_lock(&mutex);
 
 		//initialize request
-		int sumRequest = 0;
-		while(sumRequest <= 0){
+		//int sumRequest = 0;
+		//while(sumRequest <= 0){
 			for(i = 0; i < NUMBER_OF_RESOURCES; i++)
 			{
 				//requested resource cannot be greater than needed
 				if(need[processID][i] != 0)
 				{
-					requestVector[i] = rand() % (need[processID][i] + 1);
+					requestVector[i] = rand() % (need[processID][i]);
 				}
 				else
 				{
 					requestVector[i] = 0;
 				}
-				sumRequest += requestVector[i];
+				//sumRequest += requestVector[i];
 			}
 
-		}
+		//}
 		
 		//requestResource() will still return -1 when it fail and return 0 when allocation is successful
 
@@ -140,7 +140,7 @@ void *customer(void* customer_num)
 		printf("Timestamp:[%u]; Customer: %d; request satisfied\n",(unsigned)time(NULL),processID);
 
 		//since the request is granted, simulate run by sleeping for random time less than 100 millisecond
-		//release random number of resources		
+		//release all resources		
 		sleep(rand() % 100);
 
 		int releaseVector[NUMBER_OF_RESOURCES];
@@ -152,7 +152,8 @@ void *customer(void* customer_num)
 		{
 			if(allocation[processID][i] != 0)
 			{
-				releaseVector[i] = rand() % allocation[processID][i];
+				//releaseVector[i] = rand() % allocation[processID][i];
+				releaseVector[i] = allocation[processID][i];
 			}
 			else
 			{
@@ -164,7 +165,7 @@ void *customer(void* customer_num)
 		releaseResource(processID,releaseVector);
 		//unlock
 		pthread_mutex_unlock(&mutex);
-
+/*
 		int sumNeed=0;
 		while(sumNeed<=0){
 			//reset maximum to a random value less than or equal to the initial resource for the customer
@@ -176,7 +177,7 @@ void *customer(void* customer_num)
 				need[processID][i] = maximum[processID][i] - allocation[processID][i];
 				sumNeed += need[processID][i];
 			}
-		}
+		} */
 	}
 }
 
@@ -330,7 +331,7 @@ int ifInSafeMode()
 	{
 		if (ifFinish[i] == 0)
 		{
-			for(j = 0; j < NUMBER_OF_RESOURCES; ++j)
+			for(j = 0; j < NUMBER_OF_RESOURCES; j++)
 			{
 				if(need[i][j] <= work[j])
 				{
@@ -373,6 +374,7 @@ int ifInSafeMode()
 		if (ifFinish[i] == 0)
 		{
 			//not all processes are running, so it is condition 1.
+			//printf("problem\n");
 			return -1;
 		}
 		else
